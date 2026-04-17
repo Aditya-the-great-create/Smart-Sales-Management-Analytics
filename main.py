@@ -1,125 +1,144 @@
+import streamlit as st
 import pymysql
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
-import numpy as np
 
 
 conn = pymysql.connect(
     host="localhost",
     user="root",
-    password="yourSQLpwd",
+    password="your_pwd",
     database="FIFA_WC"
 )
 
 cursor = conn.cursor()
 
 def get_products():
-    cursor.execute("SELECT ID, Quantity, Price FROM Sales")
-    products = cursor.fetchall()
-    df = pd.DataFrame(products, columns=["Prod_ID", "Quantity","Price"])  
-    df["Revenue"]  = df["Quantity"] * df["Price"]
+    cursor.execute("SELECT ID, Customer, Product, Quantity, Price FROM Sales")
+    data = cursor.fetchall()
+
+    df = pd.DataFrame(data, columns=["ID", "Customer", "Product", "Quantity", "Price"])
+    df["Revenue"] = df["Quantity"] * df["Price"]
+
     return df
 
-def add_products():
-    try: 
-        prod_id = int(input("Enter Product ID: "))
-        quantity = int(input("Enter Quantity: "))
-        price = float(input("Enter Price: "))
-        
-        if quantity <= 0 and price < 0:
-            print("Invalid Quantity or Price! Please Try Again!")
-            return
-        
-        cursor.execute("Select * from Sales where ID = %s", (prod_id,))
-        if cursor.fetchone():
-            print("Product ID already exists! Please Try again!")
-            return
-        
-        maine = "Insert into Sales (ID, Quantity, Price) values (%s, %s, %s)"
-        cursor.execute(maine, (prod_id, quantity, price))
-        conn.commit()
-        print("Product Added!")
-    
-    except Exception as e:
-        print("Error: ", e)    
 
-def show_products():
+def add_product(prod_id, customer, product, quantity, price):
+
+    if quantity <= 0 or price < 0:
+        return "Invalid Quantity or Price!"
+
+    cursor.execute("SELECT * FROM Sales WHERE ID=%s", (prod_id,))
+    if cursor.fetchone():
+        return "Product ID already exists!"
+
+    cursor.execute(
+        "INSERT INTO Sales (ID, Customer, Product, Quantity, Price) VALUES (%s, %s, %s, %s, %s)",
+        (prod_id, customer, product, quantity, price)
+    )
+
+    conn.commit()
+    return "Product Added Successfully!"
+
+
+st.set_page_config(page_title="Sales System", layout="wide")
+
+st.title("📊 Smart Sales Management System")
+
+menu = st.sidebar.selectbox(
+    "Menu",
+    ["Show Products", "Add Product", "Total Revenue", "Top Product", "Sales Chart", "Predict Sales"]
+)
+
+if menu == "Show Products":
+    st.subheader("📋 All Products")
     df = get_products()
-    print("Products: \n", df)
-    
-def total_revenue():
-    df = get_products()
-    print("Products: \n", df["Revenue"].sum())
-    
-def top_product():
-    df = get_products()
-    top = df.loc[df["Price"].idxmax()]
-    print("Top Product: ", top)
-    
-def show_chart():
-    df = get_products()
-    plt.bar(df["Prod_ID"], df["Revenue"])
-    plt.title("Revenue in terms of Product")
-    plt.xlabel("Product")
-    plt.ylabel("Revenue")
-    plt.show()
 
-def predict_sales():
-    df = get_products()
-    X = df[["Quantity"]]
-    y = df["Revenue"]
-    
-    model = LinearRegression()
-    model.fit(X, y)
-    qty = int(input("Enter quantity to predict sales: "))
-    predict = model.predict([[qty]])
-    
-    print(f"Predict Sales: {qty}: {predict[0]}")
-    
-while True: 
-    print("\n SMART SALES MANAGEMENT SYSTEM ")
-    print("1. Show All Products")
-    print("2. Total Revenue")
-    print("3. Top Selling Product")
-    print("4. Show Sales Chart")
-    print("5. Predict Sales")
-    print("6. Add Products")
-    print("7. Exit")
-    
-    choice = int(input("Enter your choice: "))
-
-    if choice == 1:
-        show_products()
-
-    elif choice == 2:
-        total_revenue()
-
-    elif choice == 3:
-        top_product()
-
-    elif choice == 4:
-        show_chart()
-
-    elif choice == 5:
-        predict_sales()
-        
-    elif choice == 6:
-        add_products()
-    
-    elif choice == 7:
-        print("Exited")
-        break
-    
+    if df.empty:
+        st.warning("No data available!")
     else:
-        print("Please Try Again!")
+        st.dataframe(df, use_container_width=True)
 
-conn.close()
-    
 
-#cursor.execute("SELECT Prod_ID, Product FROM Product")
-#name = cursor.fetchall()
+elif menu == "Add Product":
+    st.subheader("➕ Add New Product")
 
-#starwars = print(name)
-#print(starwars)
+    prod_id = st.number_input("Product ID", step=1)
+    customer = st.text_input("Customer Name")
+    product = st.text_input("Product Name")
+    quantity = st.number_input("Quantity", step=1)
+    price = st.number_input("Price", step=0.1)
 
+    if st.button("Add Product"):
+        result = add_product(prod_id, customer, product, quantity, price)
+        st.success(result)
+
+
+elif menu == "Total Revenue":
+    st.subheader("💰 Total Revenue")
+
+    df = get_products()
+
+    if df.empty:
+        st.warning("No data available!")
+    else:
+        total = df["Revenue"].sum()
+        st.success(f"Total Revenue: ₹ {total:.2f}")
+
+
+elif menu == "Top Product":
+    st.subheader("🏆 Top Product")
+
+    df = get_products()
+
+    if df.empty:
+        st.warning("No data available!")
+    else:
+        top = df.loc[df["Revenue"].idxmax()]
+        st.write(top)
+
+
+elif menu == "Sales Chart":
+    st.subheader("📊 Revenue Chart")
+
+    df = get_products()
+
+    if df.empty:
+        st.warning("No data available!")
+    else:
+        fig, ax = plt.subplots()
+
+        ax.bar(df["ID"], df["Revenue"]) 
+        ax.set_xlabel("Product ID")
+        ax.set_ylabel("Revenue")
+
+        st.pyplot(fig)
+
+elif menu == "Predict Sales":
+    st.subheader("🤖 Personalized Revenue Prediction")
+
+    df = get_products()
+
+    if df.empty:
+        st.warning("No data available!")
+    else:
+       
+        df["Customer_Code"] = df["Customer"].astype("category").cat.codes
+
+        X = df[["Customer_Code", "Quantity"]]
+        y = df["Revenue"]
+
+        model = LinearRegression()
+        model.fit(X, y)
+
+        customer_list = df["Customer"].unique()
+        selected_customer = st.selectbox("Select Customer", customer_list)
+
+        qty = st.number_input("Enter Quantity", step=1)
+
+        customer_code = df[df["Customer"] == selected_customer]["Customer_Code"].iloc[0]
+
+        if st.button("Predict"):
+            prediction = model.predict([[customer_code, qty]])[0]
+            st.success(f"Predicted Revenue for {selected_customer}: ₹ {prediction:.2f}")
